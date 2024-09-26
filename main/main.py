@@ -1,21 +1,41 @@
 import os
 import discord
 from discord import Intents
-from discord.ext import commands
+from discord.ext import commands, tasks
 from dotenv import load_dotenv
 from discord import ApplicationContext
 from discord.ui import Modal, InputText, Select, View
 
-# 토큰 불러오기
+# Load token and channel ID from environment variables
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
+CHANNEL_ID = int(os.getenv('MEMBER_COUNT_ID'))  # Convert CHANNEL_ID to an integer
 
-# 봇 셋업
+# Bot setup
 intents = Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="/", intents=intents)
 
-#라이엇 아이디 받기
+# Start the loop when the bot is ready
+@bot.event
+async def on_ready():
+    update_server_member.start()
+    print(f"Logged in as {bot.user}")
+
+@tasks.loop(seconds=1)
+async def update_server_member():
+    guild = bot.guilds[0]  # Assuming the bot is in one guild
+    channel = guild.get_channel(CHANNEL_ID)
+    if channel and isinstance(channel, discord.VoiceChannel):
+        # Fetch server member count
+        member_count = guild.member_count
+
+        # Update channel name with member count
+        new_name = f"전체멤버 - {member_count}"
+        await channel.edit(name=new_name)
+        print(f"Updated channel name to '{new_name}'")
+
+# Modal to get Riot ID
 class getID(Modal):
     def __init__(self):
         super().__init__(title="My Modal")
@@ -27,7 +47,7 @@ class getID(Modal):
         tag = self.children[1].value
         await interaction.response.send_message(f"라이엇 ID: {ID}#{tag}", ephemeral=True)
 
-#계정연동 옵션
+# Select menu for account sync option
 class syncOption(Select):
     def __init__(self):
         options = [
@@ -41,13 +61,13 @@ class syncOption(Select):
             riot = getID()
             await interaction.response.send_modal(riot)
 
-# Create Slash Command group with bot.create_group
-@bot.slash_command(name='sync', description='FUCKKKKKKKKKKKKKKK!!!')
+# Slash command for syncing
+@bot.slash_command(name='sync', description='Sync your Riot account')
 async def sync(ctx: ApplicationContext):
     view = View()
     view.add_item(syncOption())
     await ctx.respond("Please select an option from the menu below:", view=view, ephemeral=True)
 
 print("done")
-# STEP 3: RUN BOT
+# Run the bot
 bot.run(TOKEN)
