@@ -54,47 +54,37 @@ def setup_commands(bot, SERVER_ID):
             ctx: ApplicationContext,
             user: discord.Option(discord.Member, description="경고 기록을 확인할 유저", required=False)
     ):
-        if not ctx.author.guild_permissions.manage_guild:
-            await ctx.respond("관리자만 이 명령어를 사용할 수 있습니다.", ephemeral=True)
-            return
+        # If no user is provided, default to the user who ran the command (both for admins and non-admins)
+        if user is None:
+            user = ctx.author
 
-        if user:
-            warning_data = coll.find_one({"_id": {"server": ctx.guild.id, "user_id": user.id}})
-            if warning_data:
-                warning_count = warning_data.get("count", 0)
-                warnings = warning_data.get("warnings", [])
-                embed = discord.Embed(
-                    title=f"{user.display_name}님의 경고 기록",
-                    description=f"{user.display_name}: 경고 {warning_count}개 보유중"
-                )
-                for warning in warnings:
-                    date = warning.get("date").strftime("%Y-%m-%d %H:%M:%S")
-                    reason = warning.get("reason", "사유 없음")
-                    embed.add_field(name=f"경고 날짜: {date}", value=f"사유: {reason}", inline=False)
-            else:
-                embed = discord.Embed(
-                    title=f"{user.display_name}님의 경고 기록",
-                    description="이 유저는 경고가 없습니다."
-                )
-            await ctx.respond(embed=embed, ephemeral=True)
+        # Fetch the warning data from the database
+        warning_data = coll.find_one({"_id": {"server": ctx.guild.id, "user_id": user.id}})
+        if warning_data:
+            warning_count = warning_data.get("count", 0)
+            warnings = warning_data.get("warnings", [])
+
+            # Create the embed for displaying the warnings
+            embed = discord.Embed(title="경고 기록")
+            avatar_url = user.avatar.url if user.avatar else user.default_avatar.url
+            embed.set_author(name=user.name, icon_url=avatar_url)
+
+            # Add warnings to the embed
+            for warning in warnings:
+                date = warning.get("date").strftime("%Y-%m-%d %H:%M:%S")
+                reason = warning.get("reason", "사유 없음")
+                embed.add_field(name=f"경고 날짜: {date}", value=f"사유: {reason}", inline=False)
+
+            # If no warnings found
+            if not warnings:
+                embed.add_field(name="경고 기록", value="이 유저는 경고가 없습니다.", inline=False)
         else:
-            users = coll.find({"_id.server": ctx.guild.id})
-            end_str = ""
-            for user_data in users:
-                member = ctx.guild.get_member(user_data["_id"]["user_id"])
-                if member:
-                    warnings = user_data.get("warnings", [])
-                    warning_str = ""
-                    for warning in warnings:
-                        date = warning.get("date").strftime("%Y-%m-%d %H:%M:%S")
-                        reason = warning.get("reason", "사유 없음")
-                        warning_str += f"{date}: {reason}\n"
-                    end_str += f"{member.display_name}: 경고 {user_data['count']}개 보유중\n{warning_str}\n"
-            if not end_str:
-                embed = discord.Embed(title="이 서버는 경고가 없습니다.")
-            else:
-                embed = discord.Embed(title="서버 경고 기록", description=end_str)
-            await ctx.respond(embed=embed, ephemeral=True)
+            embed = discord.Embed(
+                title=f"{user.display_name}님의 경고 기록",
+                description="이 유저는 경고가 없습니다."
+            )
+
+        await ctx.respond(embed=embed, ephemeral=True)
 
     @bot.slash_command(guild_ids=[int(SERVER_ID)], name="removewarn", description="유저의 경고를 제거합니다.")
     async def removewarn(ctx: ApplicationContext, user: discord.Option(discord.Member, description="경고를 제거할 유저")):
