@@ -3,14 +3,15 @@ import discord
 from discord import Intents
 from discord.ext import commands
 from dotenv import load_dotenv
-from discord import ApplicationContext
-from discord.ui import View
+from db_setup import db, coll
 from auto_update import start_member_count
-from riot_sync import syncOption
+# from riot_sync import syncOption
+from commands import setup_commands
 
 # Load token and channel ID from environment variables
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
+SERVER_ID = os.getenv('SERVER_ID')
 
 # Bot setup
 intents = Intents.default()
@@ -23,13 +24,9 @@ async def on_ready():
     await start_member_count(bot)
     print(f"Logged in as {bot.user}")
 
-# Slash command for syncing
-@bot.slash_command(name='sync', description='Sync your Riot account')
-async def sync(ctx: ApplicationContext):
-    view = View()
-    view.add_item(syncOption())
-    await ctx.respond("Please select an option from the menu below:", view=view, ephemeral=True)
+# Setup commands
+setup_commands(bot, SERVER_ID)
 
-print("done")
 # Run the bot
-bot.run(TOKEN)
+if __name__ == "__main__":
+    bot.run(TOKEN)
