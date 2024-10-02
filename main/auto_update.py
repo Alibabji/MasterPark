@@ -12,7 +12,7 @@ async def start_member_count(bot):
 @tasks.loop(minutes=10)
 async def update_server_member(bot):
     guild = bot.guilds[0]  # Assuming the bot is in one guild
-    CHANNEL_ID = int(os.getenv('MEMBER_COUNT_ID'))
+    CHANNEL_ID = int(os.getenv('MEMBER_COUNT_VOICE'))
     channel = guild.get_channel(CHANNEL_ID)
 
     if channel and isinstance(channel, discord.VoiceChannel):
@@ -26,8 +26,8 @@ async def update_server_member(bot):
         print(f"Updated channel name to '{new_name}'")
 
     # 인증인원 업데이트
-    ROLE_ID = 1289797945910231110  # Role ID
-    ROLE_CHANNEL_ID = 1289798589727506452  # 통방 ID
+    ROLE_ID = int(os.getenv('VERIFIED_ROLE_ID'))  # Role ID
+    ROLE_CHANNEL_ID = int(os.getenv('VERIFIED_COUNT_VOICE'))  # 통방 ID
     role = guild.get_role(ROLE_ID)
     role_channel_new_name = f"정식 멤버: {len(role.members)}"
     channel = bot.get_channel(ROLE_CHANNEL_ID)

@@ -15,11 +15,17 @@ client = discord.Client()
 def setup_commands(bot, SERVER_ID):
     @bot.slash_command(guild_ids=[int(SERVER_ID)],name="alert",description="유저에게 주의를 줍니다.")
     async def alert(ctx, user: discord.Option(discord.Member, description="경고를 주고싶은 유저"), reason: discord.Option(str)):
+        if not isinstance(user, discord.Member):  # Check if the user is a member of the guild
+            await ctx.respond("서버에 존재하지 않는 멤버입니다!", ephemeral=True)
+            return
         if user.bot:
             await ctx.respond("봇에게는 주의를 줄 수 없습니다.", ephemeral=True)  # Inform admin that bots can't be warned
             return
         if user.guild_permissions.manage_guild:
             await ctx.respond("관리자는 주의를 줄 수 없습니다!", ephemeral=True)
+            return
+        if len(reason) > 150:
+            await ctx.respond("사유는 150자 이내여야 합니다.", ephemeral=True)  # Error if reason exceeds 150 characters
             return
         if ctx.author.guild_permissions.manage_guild:
             if ctx.author == user:
@@ -137,8 +143,14 @@ def setup_commands(bot, SERVER_ID):
 
     @bot.slash_command(guild_ids=[int(SERVER_ID)], name="warn", description="유저에게 경고를 줍니다.")
     async def warn(ctx, user: discord.Option(discord.Member, description="경고를 주고싶은 유저"), reason: discord.Option(str)):
+        if not isinstance(user, discord.Member):  # Check if the user is a member of the guild
+            await ctx.respond("서버에 존재하지 않는 멤버입니다!", ephemeral=True)
+            return
         if user.bot:
             await ctx.respond("봇에게는 경고를 줄 수 없습니다.", ephemeral=True)  # Inform admin that bots can't be warned
+            return
+        if len(reason) > 150:
+            await ctx.respond("사유는 150자 이내여야 합니다.", ephemeral=True)  # Error if reason exceeds 150 characters
             return
         if ctx.author.guild_permissions.manage_guild:
             if ctx.author == user:
@@ -290,8 +302,14 @@ def setup_commands(bot, SERVER_ID):
 
     @bot.slash_command(guild_ids=[int(SERVER_ID)], name="ban", description="유저를 밴합니다.")
     async def ban(ctx, user: discord.Option(discord.Member, description="밴하고 싶은 유저"), reason: discord.Option(str)):
+        if not isinstance(user, discord.Member):  # Check if the user is a member of the guild
+            await ctx.respond("서버에 존재하지 않는 멤버입니다!", ephemeral=True)
+            return
         if user.bot:
             await ctx.respond("봇은 밴할 수 없습니다.", ephemeral=True)  # Inform admin that bots can't be warned
+            return
+        if len(reason) > 150:
+            await ctx.respond("사유는 150자 이내여야 합니다.", ephemeral=True)  # Error if reason exceeds 150 characters
             return
         if ctx.author.guild_permissions.manage_guild:
             if user.guild_permissions.ban_members:
@@ -347,10 +365,14 @@ def setup_commands(bot, SERVER_ID):
             await ctx.respond("권한이 없습니다!", ephemeral=True)
 
     @bot.slash_command(guild_ids=[int(SERVER_ID)], name="unban", description="유저의 밴을 해제합니다.")
-    async def unban(ctx, user_id: discord.Option(str, description="밴을 해제할 유저의 ID", required=True),
-                    reason: discord.Option(str, description="밴 해제 사유", required=False)):
+    async def unban(ctx, user_id: discord.Option(str, description="밴을 해제할 유저의 ID", required=True), reason: discord.Option(str, description="밴 해제 사유", required=False)):
         await ctx.defer(ephemeral=True)  # Allows for long-running operations
-
+        if len(user_id) > 40:
+            await ctx.respond("유효하지 않은 아이디 입니다.", ephemeral=True)  # Error if reason exceeds 150 characters
+            return
+        if reason is None or len(reason) > 150:
+            await ctx.respond("사유는 150자 이내여야 합니다.", ephemeral=True)  # Error if reason exceeds 150 characters
+            return
         # Fetch the user by their ID
         try:
             member = await bot.get_or_fetch_user(user_id)
@@ -392,5 +414,3 @@ def setup_commands(bot, SERVER_ID):
             await ctx.respond("권한이 부족하여 밴을 해제할 수 없습니다.", ephemeral=True)
         except Exception as e:
             await ctx.respond(f"밴 해제 중 오류가 발생했습니다: {str(e)}", ephemeral=True)
-
-

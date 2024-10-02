@@ -1,2 +1,2 @@
 # MasterPark
-Discord bot created in Python, a complete moderation and admin bot for 박사범의 롤려차기.
+## 사봇님 v.`1.0.1`
