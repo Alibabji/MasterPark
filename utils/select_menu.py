@@ -1,6 +1,6 @@
 import discord
 from discord.ui import Select
-from MasterPark.main.utils.db_setup import warns_coll, alerts_coll
+from MasterPark.utils.db_setup import warns_coll, alerts_coll
 from datetime import datetime
 
 

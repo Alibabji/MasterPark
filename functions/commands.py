@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 import pytz
 from discord.ext import commands
 from discord.utils import get
-from MasterPark.main.utils.db_setup import warns_coll, bans_coll, alerts_coll
-from MasterPark.main.utils.select_menu import WarningSelect, AlertSelect
+from MasterPark.utils.db_setup import warns_coll, bans_coll, alerts_coll
+from MasterPark.utils.select_menu import WarningSelect, AlertSelect
 
 banned_users = bans_coll
 client = discord.Client()

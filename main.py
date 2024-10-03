@@ -2,8 +2,8 @@ import os
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-from MasterPark.main.features.auto_update import start_member_count
-from MasterPark.main.functions.commands import setup_commands
+from MasterPark.features.auto_update import start_member_count
+from MasterPark.functions.commands import setup_commands
 
 # Load token and channel ID from environment variables
 load_dotenv()
