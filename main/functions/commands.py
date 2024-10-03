@@ -5,32 +5,38 @@ from discord.ui import View
 from datetime import datetime, timedelta
 import pytz
 from discord.ext import commands
-from db_setup import warns_coll, bans_coll, alerts_coll
 from discord.utils import get
-from select_menu import WarningSelect, AlertSelect
+from MasterPark.main.utils.db_setup import warns_coll, bans_coll, alerts_coll
+from MasterPark.main.utils.select_menu import WarningSelect, AlertSelect
 
 banned_users = bans_coll
 client = discord.Client()
 
 def setup_commands(bot, SERVER_ID):
-    @bot.slash_command(guild_ids=[int(SERVER_ID)],name="alert",description="유저에게 주의를 줍니다.")
-    async def alert(ctx, user: discord.Option(discord.Member, description="경고를 주고싶은 유저"), reason: discord.Option(str)):
+
+    # input check
+    async def check_condition(ctx,user,reason):
         if not isinstance(user, discord.Member):  # Check if the user is a member of the guild
             await ctx.respond("서버에 존재하지 않는 멤버입니다!", ephemeral=True)
-            return
-        if user.bot:
-            await ctx.respond("봇에게는 주의를 줄 수 없습니다.", ephemeral=True)  # Inform admin that bots can't be warned
-            return
-        if user.guild_permissions.manage_guild:
-            await ctx.respond("관리자는 주의를 줄 수 없습니다!", ephemeral=True)
-            return
+            return False
+        elif ctx.author == user:
+            await ctx.respond("자기자신에겐 사용 불가능한 명령어입니다!!", ephemeral=True)
+            return False
+        elif user.guild_permissions.manage_guild:
+            await ctx.respond("관리자/봇에겐 사용 불가능한 명령어입니다!!", ephemeral=True)
+            return False
         if len(reason) > 150:
             await ctx.respond("사유는 150자 이내여야 합니다.", ephemeral=True)  # Error if reason exceeds 150 characters
-            return
+            return False
+        return True
+
+    @bot.slash_command(guild_ids=[int(SERVER_ID)],name="alert",description="유저에게 주의를 줍니다.")
+    async def alert(ctx, user: discord.Option(discord.Member, description="경고를 주고싶은 유저"), reason: discord.Option(str)):
         if ctx.author.guild_permissions.manage_guild:
-            if ctx.author == user:
-                await ctx.respond("자기자신에겐 주의를 줄 수 없습니다!", ephemeral=True)
+
+            if not await check_condition(ctx,user,reason):
                 return
+
             avatar_url = user.avatar.url if user.avatar else user.default_avatar.url
             current_time = datetime.utcnow()
 
@@ -40,12 +46,11 @@ def setup_commands(bot, SERVER_ID):
                 "alerts": [{
                     "date": current_time.strftime("%Y-%m-%d %H:%M:%S UTC"),
                     "reason": reason,
-                    "issued_by": ctx.author.display_name  # 경고를 준 관리자 정보 추가
+                    "issued_by": ctx.author.display_name
                 }]
             }
-
             try:
-                alerts_coll.insert_one(alert_data)
+                alerts_coll.insert_one(alert_data) #DB에 데이터 저장
             except pymongo.errors.DuplicateKeyError:
                 alerts_coll.update_one(
                     {"_id": {"server": user.guild.id, "user_id": user.id}},
@@ -55,10 +60,13 @@ def setup_commands(bot, SERVER_ID):
                         "issued_by": ctx.author.display_name
                     }}}
                 )
+
             await ctx.respond(f"{user.name}에게 주의를 주었습니다", ephemeral=True)
+
             user_alerts = alerts_coll.find_one({"_id": {"server": ctx.guild.id, "user_id": user.id}})
             warning_count = user_alerts["count"] if user_alerts else 0
 
+            #discord DM Embed
             embed = discord.Embed(
                 title=f"📣 {ctx.author.name}께서 주의를 주셨습니다!",
                 color=discord.Color.yellow()
@@ -67,6 +75,7 @@ def setup_commands(bot, SERVER_ID):
             embed.add_field(name="날짜",value = current_time.strftime("%Y-%m-%d %H:%M:%S UTC"),inline=False)
             embed.add_field(name="사유", value=reason, inline=False)
             embed.add_field(name="현재 주의 수", value=str(warning_count), inline=False)
+
             try:
                 await user.send(embed=embed)
             except discord.Forbidden:
@@ -78,11 +87,14 @@ def setup_commands(bot, SERVER_ID):
     async def alerts(ctx: ApplicationContext, user: discord.Option(discord.Member, description="주의 기록을 확인할 유저", required=False)):
         if user is None:
             user = ctx.author
-        if user is None:
-            await ctx.respond("유저 정보를 찾을 수 없습니다.", ephemeral=True)
+            if user is None:
+                await ctx.respond("유저 정보를 찾을 수 없습니다.", ephemeral=True)
+                return
+        elif user and not ctx.author.guild_permissions.manage_guild:
+            await ctx.respond("권한이 없습니다!", ephemeral=True)
             return
         if user.bot:
-            await ctx.respond("봇에게는 주의를 줄 수 없습니다.", ephemeral=True)  # Inform admin that bots can't be warned
+            await ctx.respond("봇에게는 사용할 수 없습니다!", ephemeral=True)
             return
 
         current_time = datetime.utcnow()
@@ -98,22 +110,10 @@ def setup_commands(bot, SERVER_ID):
             avatar_url = user.avatar.url if user.avatar else user.default_avatar.url
             embed.set_author(name=user.name, icon_url=avatar_url)
 
-            # Check if the user running the command is the author or an admin
-            is_admin = ctx.author.guild_permissions.manage_guild
-
-            # Display active warnings if the user is not an admin
-            if not is_admin:
-                for alert in alerts:
-                    date = alert.get("date")
-                    reason = alert.get("reason", "사유 없음")
-                    embed.add_field(name=f"주의 날짜: {date}", value=f"사유: {reason}", inline=False)
-
-            # If the user is an admin, display both active and expired warnings
-            if is_admin:
-                for alert in alerts:
-                    date = alert.get("date")
-                    reason = alert.get("reason", "사유 없음")
-                    embed.add_field(name=f"주의 날짜: {date}", value=f"사유: {reason}", inline=False)
+            for alert in alerts:
+                date = alert.get("date")
+                reason = alert.get("reason", "사유 없음")
+                embed.add_field(name=f"주의 날짜: {date}", value=f"사유: {reason}", inline=False)
 
             if not alerts:
                 embed.add_field(name="주의 기록", value="이 유저는 주의가 없습니다.", inline=False)
@@ -143,22 +143,10 @@ def setup_commands(bot, SERVER_ID):
 
     @bot.slash_command(guild_ids=[int(SERVER_ID)], name="warn", description="유저에게 경고를 줍니다.")
     async def warn(ctx, user: discord.Option(discord.Member, description="경고를 주고싶은 유저"), reason: discord.Option(str)):
-        if not isinstance(user, discord.Member):  # Check if the user is a member of the guild
-            await ctx.respond("서버에 존재하지 않는 멤버입니다!", ephemeral=True)
-            return
-        if user.bot:
-            await ctx.respond("봇에게는 경고를 줄 수 없습니다.", ephemeral=True)  # Inform admin that bots can't be warned
-            return
-        if len(reason) > 150:
-            await ctx.respond("사유는 150자 이내여야 합니다.", ephemeral=True)  # Error if reason exceeds 150 characters
-            return
         if ctx.author.guild_permissions.manage_guild:
-            if ctx.author == user:
-                await ctx.respond("자기자신에겐 경고를 줄 수 없습니다!", ephemeral=True)
+            if not await check_condition(ctx, user, reason):
                 return
-            if user.guild_permissions.manage_guild:
-                await ctx.respond("관리자는 경고할 수 없습니다!", ephemeral=True)
-                return
+
             embed = discord.Embed(title="경고")
             avatar_url = user.avatar.url if user.avatar else user.default_avatar.url
             embed.set_author(name=user.name, icon_url=avatar_url)
@@ -223,11 +211,14 @@ def setup_commands(bot, SERVER_ID):
     async def warns(ctx: ApplicationContext, user: discord.Option(discord.Member, description="경고 기록을 확인할 유저", required=False)):
         if user is None:
             user = ctx.author
-        if user is None:
-            await ctx.respond("유저 정보를 찾을 수 없습니다.", ephemeral=True)
+            if user is None:
+                await ctx.respond("유저 정보를 찾을 수 없습니다.", ephemeral=True)
+                return
+        elif user and not ctx.author.guild_permissions.manage_guild:
+            await ctx.respond("권한이 없습니다!", ephemeral=True)
             return
         if user.bot:
-            await ctx.respond("봇에게는 주의를 줄 수 없습니다.", ephemeral=True)  # Inform admin that bots can't be warned
+            await ctx.respond("봇에게는 사용할 수 없습니다!", ephemeral=True)
             return
 
         current_time = datetime.utcnow()
@@ -302,65 +293,55 @@ def setup_commands(bot, SERVER_ID):
 
     @bot.slash_command(guild_ids=[int(SERVER_ID)], name="ban", description="유저를 밴합니다.")
     async def ban(ctx, user: discord.Option(discord.Member, description="밴하고 싶은 유저"), reason: discord.Option(str)):
-        if not isinstance(user, discord.Member):  # Check if the user is a member of the guild
-            await ctx.respond("서버에 존재하지 않는 멤버입니다!", ephemeral=True)
-            return
-        if user.bot:
-            await ctx.respond("봇은 밴할 수 없습니다.", ephemeral=True)  # Inform admin that bots can't be warned
-            return
-        if len(reason) > 150:
-            await ctx.respond("사유는 150자 이내여야 합니다.", ephemeral=True)  # Error if reason exceeds 150 characters
-            return
         if ctx.author.guild_permissions.manage_guild:
-            if user.guild_permissions.ban_members:
-                await ctx.respond("관리자는 밴할 수 없습니다!", ephemeral=True)
-            else:
-                current_time = datetime.utcnow()
-                emoji = get(ctx.guild.emojis, name="zany_face")  # Fetch the custom emoji
+            if not await check_condition(ctx, user, reason):
+                return
+            current_time = datetime.utcnow()
+            emoji = get(ctx.guild.emojis, name="zany_face")  # Fetch the custom emoji
 
-                # If emoji is found, convert it to its string format (e.g., <:emoji_name:emoji_id>)
-                emoji_str = str(emoji) if emoji else "🤪"  # Fallback to a default emoji if not found
+            # If emoji is found, convert it to its string format (e.g., <:emoji_name:emoji_id>)
+            emoji_str = str(emoji) if emoji else "🤪"  # Fallback to a default emoji if not found
 
-                user_alerts = alerts_coll.find_one({"_id": {"server": ctx.guild.id, "user_id": user.id}})
-                warning_count = user_alerts["count"] if user_alerts else 0
+            user_alerts = alerts_coll.find_one({"_id": {"server": ctx.guild.id, "user_id": user.id}})
+            warning_count = user_alerts["count"] if user_alerts else 0
 
-                user_alerts = alerts_coll.find_one({"user_id": user.id})
+            user_alerts = alerts_coll.find_one({"user_id": user.id})
 
-                embed = discord.Embed(
-                    title="🫨 추방 당하셨습니다 🫨",
-                    color=discord.Color.red()
-                )
-                embed.add_field(name="날짜", value=current_time.strftime("%Y-%m-%d %H:%M:%S UTC"), inline=False)
-                embed.add_field(name="사유", value=reason, inline=False)
+            embed = discord.Embed(
+                title="🫨 추방 당하셨습니다 🫨",
+                color=discord.Color.red()
+            )
+            embed.add_field(name="날짜", value=current_time.strftime("%Y-%m-%d %H:%M:%S UTC"), inline=False)
+            embed.add_field(name="사유", value=reason, inline=False)
 
-                try:
-                    await user.send(embed=embed)
-                except discord.Forbidden:
-                    await ctx.respond(f"{user.mention}님께 DM을 보낼 수 없습니다. (DM이 비활성화 되어있습니다.)", ephemeral=True)
+            try:
+                await user.send(embed=embed)
+            except discord.Forbidden:
+                await ctx.respond(f"{user.mention}님께 DM을 보낼 수 없습니다. (DM이 비활성화 되어있습니다.)", ephemeral=True)
 
-                embed = discord.Embed(
-                    title=f"RIP {emoji_str}",
-                    description=f"{user.name}",
-                    color=discord.Colour.red()
-                )
-                embed.add_field(name="사유", value=reason)
-                await ctx.respond(embed=embed)
-                await user.ban(reason=reason)
+            embed = discord.Embed(
+                title=f"RIP {emoji_str}",
+                description=f"{user.name}",
+                color=discord.Colour.red()
+            )
+            embed.add_field(name="사유", value=reason)
+            await ctx.respond(embed=embed)
+            await user.ban(reason=reason)
 
-                # Save ban info to MongoDB
-                current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-                ban_data = {
-                    "user_id": user.id,
-                    "user_name": user.name,
-                    "server_id": ctx.guild.id,
-                    "ban_time": current_time,
-                    "reason": reason
-                }
-                try:
-                    bans_coll.insert_one(ban_data)
-                    print(f"Ban data saved for {user.name}.")
-                except Exception as e:
-                    print(f"Error saving ban data: {e}")
+            # Save ban info to MongoDB
+            current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+            ban_data = {
+                "user_id": user.id,
+                "user_name": user.name,
+                "server_id": ctx.guild.id,
+                "ban_time": current_time,
+                "reason": reason
+            }
+            try:
+                bans_coll.insert_one(ban_data)
+                print(f"Ban data saved for {user.name}.")
+            except Exception as e:
+                print(f"Error saving ban data: {e}")
         else:
             await ctx.respond("권한이 없습니다!", ephemeral=True)
 

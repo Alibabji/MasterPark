@@ -1,11 +1,9 @@
 import os
 import discord
-from discord import Intents
 from discord.ext import commands
 from dotenv import load_dotenv
-from db_setup import warns_db, warns_coll
-from auto_update import start_member_count
-from commands import setup_commands
+from MasterPark.main.features.auto_update import start_member_count
+from MasterPark.main.functions.commands import setup_commands
 
 # Load token and channel ID from environment variables
 load_dotenv()
@@ -18,7 +16,7 @@ intents.message_content = True
 intents.members = True
 intents.guilds = True# Intents 설정을 먼저 하고
 
-# commands.Bot 또는 discord.Bot 중 하나만 사용해야 합니다.
+# functions.Bot 또는 discord.Bot 중 하나만 사용해야 합니다.
 bot = commands.Bot(command_prefix="/", intents=intents)
 
 # Start the loop when the bot is ready
@@ -27,7 +25,7 @@ async def on_ready():
     await start_member_count(bot)
     print(f"Logged in as {bot.user}")
 
-# Setup commands
+# Setup functions
 setup_commands(bot, SERVER_ID)
 
 # Run the bot
