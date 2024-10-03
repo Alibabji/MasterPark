@@ -3,7 +3,6 @@ from dotenv import load_dotenv
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 
-
 # Load environment variables
 load_dotenv()
 DB_PASSWORD = os.getenv('DB_PASSWORD')
