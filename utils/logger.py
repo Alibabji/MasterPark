@@ -5,7 +5,8 @@ from .utils import Util
 
 load_dotenv()
 
-GLOBAL_LOG_CHANNEL_ID = int(os.getenv('GLOBAL_LOG_CHANNEL_ID'))
+REACT_LOG_ID=int(os.getenv('REACT_LOG_ID'))
+CHAT_LOG_ID=int(os.getenv('CHAT_LOG_ID'))
 
 
 def setup_logger(bot):
@@ -15,17 +16,17 @@ def setup_logger(bot):
             return
 
         # Get the log channel
-        log_channel = bot.get_channel(GLOBAL_LOG_CHANNEL_ID)
+        log_channel = bot.get_channel(CHAT_LOG_ID)
 
         if log_channel is None:
-            print(f"Log channel with ID {GLOBAL_LOG_CHANNEL_ID} not found.")
+            print(f"Log channel with ID {CHAT_LOG_ID} not found.")
             return
 
         # Check if message content has been edited
         if before.content != after.content:
             embed = discord.Embed(
                 description=f"Message edited in {after.channel.mention}",
-                color=0xfc6ddd
+                color=discord.Color.blurple()
             )
             embed.set_author(name=str(after.author), icon_url=after.author.display_avatar.url)
             embed.add_field(name="Before", value=before.content or "No content", inline=False)
@@ -63,9 +64,9 @@ def setup_logger(bot):
         if msg.author.bot:
             return
 
-        log_channel = bot.get_channel(GLOBAL_LOG_CHANNEL_ID)
+        log_channel = bot.get_channel(CHAT_LOG_ID)
         if log_channel is None:
-            print(f"Log channel with ID {GLOBAL_LOG_CHANNEL_ID} not found.")
+            print(f"Log channel with ID {CHAT_LOG_ID} not found.")
             return
 
         for attachment in msg.attachments:
@@ -107,3 +108,45 @@ def setup_logger(bot):
 
             # Send the embed to the log channel
             await log_channel.send(embed=embed)
+
+    # Event to log reaction removals
+    @bot.event
+    async def on_reaction_remove(reaction: discord.Reaction, user: discord.User):
+        # Ignore DMs and bot reactions
+        if reaction.message.guild is None:
+            return
+        if user.bot:
+            return
+
+        # Get the log channel where messages will be sent
+        log_channel = bot.get_channel(REACT_LOG_ID)
+
+        if log_channel is None:
+            print(f"Log channel with ID {REACT_LOG_ID} not found.")
+            return
+
+        # Create the base embed for reaction removal
+        embed = discord.Embed(
+            description=f"A reaction was removed in {reaction.message.channel.mention}",
+            color=0xEC7C26
+        )
+        embed.set_author(name=str(user), icon_url=user.display_avatar.url)
+
+        # Check if the emoji is a standard or custom emoji
+        if isinstance(reaction.emoji, str):
+            # Standard emoji (no URL, just a string)
+            embed.add_field(name="Reaction", value=reaction.emoji)
+        else:
+            # Custom emoji (has URL)
+            embed.set_thumbnail(url=reaction.emoji.url)
+            embed.add_field(name="Emoji Name", value=reaction.emoji.name)
+            embed.add_field(name="Emoji Link", value=reaction.emoji.url)
+            embed.add_field(name="Emoji Type", value="Animated Emoji" if reaction.emoji.animated else "Static Emoji")
+
+        # Add the message link and other details
+        embed.add_field(name="Message Link", value=f"[Jump to message]({reaction.message.jump_url})", inline=False)
+        embed.set_footer(
+            text=f"Member: {user.id} | Channel: {reaction.message.channel.id} | Message: {reaction.message.id}")
+
+        # Send the embed to the log channel
+        await log_channel.send(embed=embed)

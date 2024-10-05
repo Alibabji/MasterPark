@@ -2,7 +2,11 @@ import discord
 from discord.ui import Select
 from MasterPark.utils.db_setup import warns_coll, alerts_coll
 from datetime import datetime
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
+WARN_LOG_ID=int(os.getenv('WARN_LOG_ID'))
 
 class AlertSelect(Select):
     def __init__(self, alerts, user, ctx):
@@ -37,6 +41,22 @@ class AlertSelect(Select):
         )
         await interaction.response.edit_message(embed=embed, view=None)
 
+        # 로그 채널에 주의 제거 기록 추가
+        log_embed = discord.Embed(
+            title="⚠️ 유저 주의 제거됨",
+            color=0x6846ff,
+            timestamp=datetime.utcnow()
+        )
+        log_embed.add_field(name="유저", value=f"{self.user.mention} ({self.user.id})", inline=False)
+        log_embed.add_field(name="관리자", value=f"{self.ctx.author.mention} ({self.ctx.author.id})", inline=False)
+        log_embed.add_field(name="제거된 주의", value=f"#{selected_index + 1}", inline=False)
+        log_embed.add_field(name="사유", value=removed_alert['reason'], inline=False)
+        log_embed.add_field(name="날짜", value=self.format_date(removed_alert['date']), inline=False)
+
+        log_channel = self.ctx.bot.get_channel(int(WARN_LOG_ID))  # WARN_LOG_ID는 로그 채널 ID로 대체
+        if log_channel:
+            await log_channel.send(embed=log_embed)
+
 
 class WarningSelect(Select):
     def __init__(self, warnings, user, ctx):
@@ -70,3 +90,19 @@ class WarningSelect(Select):
             description=f"경고 #{selected_index + 1}이(가) 제거되었습니다.\n\n사유: {removed_warning['reason']}\n날짜: {self.format_date(removed_warning['date'])}"
         )
         await interaction.response.edit_message(embed=embed, view=None)
+
+        # 로그 채널에 경고 제거 기록 추가
+        log_embed = discord.Embed(
+            title="⚠️ 유저 경고 제거됨",
+            color=0xa250ff,
+            timestamp=datetime.utcnow()
+        )
+        log_embed.add_field(name="유저", value=f"{self.user.mention} ({self.user.id})", inline=False)
+        log_embed.add_field(name="관리자", value=f"{self.ctx.author.mention} ({self.ctx.author.id})", inline=False)
+        log_embed.add_field(name="제거된 경고", value=f"#{selected_index + 1}", inline=False)
+        log_embed.add_field(name="사유", value=removed_warning['reason'], inline=False)
+        log_embed.add_field(name="날짜", value=self.format_date(removed_warning['date']), inline=False)
+
+        log_channel = self.ctx.bot.get_channel(int(WARN_LOG_ID))  # WARN_LOG_ID는 로그 채널 ID로 대체
+        if log_channel:
+            await log_channel.send(embed=log_embed)
