@@ -8,8 +8,8 @@ from dotenv import load_dotenv
 import os
 from discord.ext import commands
 from discord.utils import get
-from utils.db_setup import warns_coll, bans_coll, alerts_coll
-from utils.select_menu import WarningSelect, AlertSelect
+from MasterPark.utils.db_setup import warns_coll, bans_coll, alerts_coll
+from MasterPark.utils.select_menu import WarningSelect, AlertSelect
 
 load_dotenv()
 

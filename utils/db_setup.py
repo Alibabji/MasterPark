@@ -11,14 +11,20 @@ DB_PASSWORD = os.getenv('DB_PASSWORD')
 uri = f"mongodb+srv://alibabji:{DB_PASSWORD}@cluster0.vu34v.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 
 # Create a new client and connect to the server
+# 테스트시 주석 해제
 client = MongoClient(uri, server_api=ServerApi('1'))
+warns_db = client.warns_test
+bans_db = client.bans_test
+alerts_db = client.alerts_test
+
+"""
 warns_db = client.warns
-warns_coll = warns_db.serverwarns
-
 bans_db = client.bans
-bans_coll = bans_db.serverbans
-
 alerts_db = client.alerts
+"""
+
+warns_coll = warns_db.serverwarns
+bans_coll = bans_db.serverbans
 alerts_coll = alerts_db.serveralerts
 
 # Send a ping to confirm a successful connection

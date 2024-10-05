@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from features import auto_update
 from features.auto_update import start_member_count
 from functions.commands import setup_commands
+from utils.logger import setup_logger
 
 # Load token and channel ID from environment variables
 load_dotenv()
@@ -28,6 +29,8 @@ async def on_ready():
 
 # Setup functions
 setup_commands(bot, SERVER_ID)
+
+setup_logger(bot)
 
 # Run the bot
 if __name__ == "__main__":
