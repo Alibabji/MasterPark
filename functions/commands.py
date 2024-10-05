@@ -4,13 +4,18 @@ from discord import ApplicationContext, Embed, Option
 from discord.ui import View
 from datetime import datetime, timedelta
 import pytz
+from dotenv import load_dotenv
+import os
 from discord.ext import commands
 from discord.utils import get
-from MasterPark.utils.db_setup import warns_coll, bans_coll, alerts_coll
-from MasterPark.utils.select_menu import WarningSelect, AlertSelect
+from utils.db_setup import warns_coll, bans_coll, alerts_coll
+from utils.select_menu import WarningSelect, AlertSelect
+
+load_dotenv()
 
 banned_users = bans_coll
 client = discord.Client()
+ROLE_ID=int(os.getenv('SUBMOD_ID'))
 
 def setup_commands(bot, SERVER_ID):
 
@@ -32,7 +37,7 @@ def setup_commands(bot, SERVER_ID):
 
     @bot.slash_command(guild_ids=[int(SERVER_ID)],name="alert",description="유저에게 주의를 줍니다.")
     async def alert(ctx, user: discord.Option(discord.Member, description="경고를 주고싶은 유저"), reason: discord.Option(str)):
-        if ctx.author.guild_permissions.manage_guild:
+        if ctx.author.guild_permissions.manage_guild or ROLE_ID in [role.id for role in ctx.author.roles]:
 
             if not await check_condition(ctx,user,reason):
                 return
@@ -90,7 +95,7 @@ def setup_commands(bot, SERVER_ID):
             if user is None:
                 await ctx.respond("유저 정보를 찾을 수 없습니다.", ephemeral=True)
                 return
-        elif user and not ctx.author.guild_permissions.manage_guild:
+        elif user and not ctx.author.guild_permissions.manage_guild and ROLE_ID not in [role.id for role in ctx.author.roles]:
             await ctx.respond("권한이 없습니다!", ephemeral=True)
             return
         if user.bot:
@@ -128,7 +133,7 @@ def setup_commands(bot, SERVER_ID):
 
     @bot.slash_command(guild_ids=[int(SERVER_ID)], name="removealert", description="유저의 경고를 제거합니다.")
     async def removealert(ctx: ApplicationContext, user: discord.Option(discord.Member, description="주의를 제거할 유저")):
-        if ctx.author.guild_permissions.manage_guild:
+        if ctx.author.guild_permissions.manage_guild or ROLE_ID in [role.id for role in ctx.author.roles]:
             alert_data = alerts_coll.find_one({"_id": {"server": ctx.guild.id, "user_id": user.id}})
             if alert_data and alert_data.get("alerts"):
                 alerts = alert_data.get("alerts", [])
@@ -143,7 +148,7 @@ def setup_commands(bot, SERVER_ID):
 
     @bot.slash_command(guild_ids=[int(SERVER_ID)], name="warn", description="유저에게 경고를 줍니다.")
     async def warn(ctx, user: discord.Option(discord.Member, description="경고를 주고싶은 유저"), reason: discord.Option(str)):
-        if ctx.author.guild_permissions.manage_guild:
+        if ctx.author.guild_permissions.manage_guild or ROLE_ID in [role.id for role in ctx.author.roles]:
             if not await check_condition(ctx, user, reason):
                 return
 
@@ -214,7 +219,7 @@ def setup_commands(bot, SERVER_ID):
             if user is None:
                 await ctx.respond("유저 정보를 찾을 수 없습니다.", ephemeral=True)
                 return
-        elif user and not ctx.author.guild_permissions.manage_guild:
+        elif user and not ctx.author.guild_permissions.manage_guild and ROLE_ID not in [role.id for role in ctx.author.roles]:
             await ctx.respond("권한이 없습니다!", ephemeral=True)
             return
         if user.bot:
@@ -278,7 +283,7 @@ def setup_commands(bot, SERVER_ID):
 
     @bot.slash_command(guild_ids=[int(SERVER_ID)], name="removewarn", description="유저의 경고를 제거합니다.")
     async def removewarn(ctx: ApplicationContext, user: discord.Option(discord.Member, description="경고를 제거할 유저")):
-        if ctx.author.guild_permissions.manage_guild:
+        if ctx.author.guild_permissions.manage_guild or ROLE_ID in [role.id for role in ctx.author.roles]:
             warning_data = warns_coll.find_one({"_id": {"server": ctx.guild.id, "user_id": user.id}})
             if warning_data and warning_data.get("warnings"):
                 warnings = warning_data.get("warnings", [])
