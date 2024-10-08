@@ -4,13 +4,19 @@ from discord import ApplicationContext, Embed, Option
 from discord.ui import View
 from datetime import datetime, timedelta
 import pytz
+from dotenv import load_dotenv
+import os
 from discord.ext import commands
 from discord.utils import get
 from utils.db_setup import warns_coll, bans_coll, alerts_coll
 from utils.select_menu import WarningSelect, AlertSelect
 
+load_dotenv()
+
 banned_users = bans_coll
 client = discord.Client()
+ROLE_ID=int(os.getenv('SUBMOD_ID'))
+WARN_LOG_ID=int(os.getenv('WARN_LOG_ID'))
 
 def setup_commands(bot, SERVER_ID):
 
@@ -32,7 +38,7 @@ def setup_commands(bot, SERVER_ID):
 
     @bot.slash_command(guild_ids=[int(SERVER_ID)],name="alert",description="유저에게 주의를 줍니다.")
     async def alert(ctx, user: discord.Option(discord.Member, description="경고를 주고싶은 유저"), reason: discord.Option(str)):
-        if ctx.author.guild_permissions.manage_guild:
+        if ctx.author.guild_permissions.manage_guild or ROLE_ID in [role.id for role in ctx.author.roles]:
 
             if not await check_condition(ctx,user,reason):
                 return
@@ -76,6 +82,23 @@ def setup_commands(bot, SERVER_ID):
             embed.add_field(name="사유", value=reason, inline=False)
             embed.add_field(name="현재 주의 수", value=str(warning_count), inline=False)
 
+            log_embed = discord.Embed(
+                title="🔔 유저 주의",
+                color=0xFFB346,  # 색상 그대로 사용
+                timestamp=current_time  # 슬래시 명령어에서 ctx.created_at 사용
+            )
+            log_embed.add_field(name="유저", value=f"{user.mention} ({user.id})", inline=False)
+            log_embed.add_field(name="관리자", value=f"{ctx.author.mention} ({ctx.author.id})", inline=False)
+            log_embed.add_field(name="사유", value=reason, inline=False)
+            log_embed.add_field(name="주의 수", value=str(warning_count), inline=True)
+
+            log_channel = bot.get_channel(int(WARN_LOG_ID))
+            if log_channel:
+                await log_channel.send(embed=log_embed)
+            else:
+                print("WARN_LOG_ID로 로그 채널을 찾을 수 없습니다.")
+
+
             try:
                 await user.send(embed=embed)
             except discord.Forbidden:
@@ -90,7 +113,7 @@ def setup_commands(bot, SERVER_ID):
             if user is None:
                 await ctx.respond("유저 정보를 찾을 수 없습니다.", ephemeral=True)
                 return
-        elif user and not ctx.author.guild_permissions.manage_guild:
+        elif user and not ctx.author.guild_permissions.manage_guild and ROLE_ID not in [role.id for role in ctx.author.roles]:
             await ctx.respond("권한이 없습니다!", ephemeral=True)
             return
         if user.bot:
@@ -128,7 +151,7 @@ def setup_commands(bot, SERVER_ID):
 
     @bot.slash_command(guild_ids=[int(SERVER_ID)], name="removealert", description="유저의 경고를 제거합니다.")
     async def removealert(ctx: ApplicationContext, user: discord.Option(discord.Member, description="주의를 제거할 유저")):
-        if ctx.author.guild_permissions.manage_guild:
+        if ctx.author.guild_permissions.manage_guild or ROLE_ID in [role.id for role in ctx.author.roles]:
             alert_data = alerts_coll.find_one({"_id": {"server": ctx.guild.id, "user_id": user.id}})
             if alert_data and alert_data.get("alerts"):
                 alerts = alert_data.get("alerts", [])
@@ -143,7 +166,7 @@ def setup_commands(bot, SERVER_ID):
 
     @bot.slash_command(guild_ids=[int(SERVER_ID)], name="warn", description="유저에게 경고를 줍니다.")
     async def warn(ctx, user: discord.Option(discord.Member, description="경고를 주고싶은 유저"), reason: discord.Option(str)):
-        if ctx.author.guild_permissions.manage_guild:
+        if ctx.author.guild_permissions.manage_guild or ROLE_ID in [role.id for role in ctx.author.roles]:
             if not await check_condition(ctx, user, reason):
                 return
 
@@ -201,6 +224,23 @@ def setup_commands(bot, SERVER_ID):
             except discord.Forbidden:
                 await ctx.respond(f"{user.mention}님께 DM을 보낼 수 없습니다. (DM이 비활성화 되어있습니다.)", ephemeral=True)
 
+            # 로그 임베드 추가
+            log_embed = discord.Embed(
+                title="⚠️ 유저 경고",
+                color=0xFFD050,
+                timestamp=current_time
+            )
+            log_embed.add_field(name="유저", value=f"{user.mention} ({user.id})", inline=False)
+            log_embed.add_field(name="관리자", value=f"{ctx.author.mention} ({ctx.author.id})", inline=False)
+            log_embed.add_field(name="사유", value=reason, inline=False)
+            log_embed.add_field(name="경고 수", value=str(warning_count), inline=True)
+
+            log_channel = bot.get_channel(int(WARN_LOG_ID))
+            if log_channel:
+                await log_channel.send(embed=log_embed)
+            else:
+                print("WARN_LOG_ID로 로그 채널을 찾을 수 없습니다.")
+
             # 경고 4회 이상 시 자동 퇴장 처리
             if warning_count >= 4:
                 await ban(ctx,user,"경고 누적")
@@ -214,7 +254,7 @@ def setup_commands(bot, SERVER_ID):
             if user is None:
                 await ctx.respond("유저 정보를 찾을 수 없습니다.", ephemeral=True)
                 return
-        elif user and not ctx.author.guild_permissions.manage_guild:
+        elif user and not ctx.author.guild_permissions.manage_guild and ROLE_ID not in [role.id for role in ctx.author.roles]:
             await ctx.respond("권한이 없습니다!", ephemeral=True)
             return
         if user.bot:
@@ -278,7 +318,7 @@ def setup_commands(bot, SERVER_ID):
 
     @bot.slash_command(guild_ids=[int(SERVER_ID)], name="removewarn", description="유저의 경고를 제거합니다.")
     async def removewarn(ctx: ApplicationContext, user: discord.Option(discord.Member, description="경고를 제거할 유저")):
-        if ctx.author.guild_permissions.manage_guild:
+        if ctx.author.guild_permissions.manage_guild or ROLE_ID in [role.id for role in ctx.author.roles]:
             warning_data = warns_coll.find_one({"_id": {"server": ctx.guild.id, "user_id": user.id}})
             if warning_data and warning_data.get("warnings"):
                 warnings = warning_data.get("warnings", [])
@@ -305,8 +345,6 @@ def setup_commands(bot, SERVER_ID):
             user_alerts = alerts_coll.find_one({"_id": {"server": ctx.guild.id, "user_id": user.id}})
             warning_count = user_alerts["count"] if user_alerts else 0
 
-            user_alerts = alerts_coll.find_one({"user_id": user.id})
-
             embed = discord.Embed(
                 title="🫨 추방 당하셨습니다 🫨",
                 color=discord.Color.red()
@@ -319,6 +357,7 @@ def setup_commands(bot, SERVER_ID):
             except discord.Forbidden:
                 await ctx.respond(f"{user.mention}님께 DM을 보낼 수 없습니다. (DM이 비활성화 되어있습니다.)", ephemeral=True)
 
+            # 유저 추방 후 관리자에게 응답
             embed = discord.Embed(
                 title=f"RIP {emoji_str}",
                 description=f"{user.name}",
@@ -328,13 +367,13 @@ def setup_commands(bot, SERVER_ID):
             await ctx.respond(embed=embed)
             await user.ban(reason=reason)
 
-            # Save ban info to MongoDB
-            current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+            # MongoDB에 밴 정보 저장
+            current_time_str = current_time.strftime("%Y-%m-%d %H:%M:%S UTC")
             ban_data = {
                 "user_id": user.id,
                 "user_name": user.name,
                 "server_id": ctx.guild.id,
-                "ban_time": current_time,
+                "ban_time": current_time_str,
                 "reason": reason
             }
             try:
@@ -342,17 +381,35 @@ def setup_commands(bot, SERVER_ID):
                 print(f"Ban data saved for {user.name}.")
             except Exception as e:
                 print(f"Error saving ban data: {e}")
+
+            # 로그 임베드 추가
+            log_embed = discord.Embed(
+                title="🚫 유저 밴",
+                color=0xFF6962,
+                timestamp=current_time
+            )
+            log_embed.add_field(name="유저", value=f"{user.mention} ({user.id})", inline=False)
+            log_embed.add_field(name="관리자", value=f"{ctx.author.mention} ({ctx.author.id})", inline=False)
+            log_embed.add_field(name="사유", value=reason, inline=False)
+            log_embed.add_field(name="밴 시간", value=current_time_str, inline=True)
+
+            log_channel = bot.get_channel(int(WARN_LOG_ID))
+            if log_channel:
+                await log_channel.send(embed=log_embed)
+
         else:
             await ctx.respond("권한이 없습니다!", ephemeral=True)
 
     @bot.slash_command(guild_ids=[int(SERVER_ID)], name="unban", description="유저의 밴을 해제합니다.")
-    async def unban(ctx, user_id: discord.Option(str, description="밴을 해제할 유저의 ID", required=True), reason: discord.Option(str, description="밴 해제 사유", required=False)):
+    async def unban(ctx, user_id: discord.Option(str, description="밴을 해제할 유저의 ID", required=True),
+                    reason: discord.Option(str, description="밴 해제 사유", required=False)):
+        current_time = datetime.utcnow()
         await ctx.defer(ephemeral=True)  # Allows for long-running operations
         if len(user_id) > 40:
-            await ctx.respond("유효하지 않은 아이디 입니다.", ephemeral=True)  # Error if reason exceeds 150 characters
+            await ctx.respond("유효하지 않은 아이디 입니다.", ephemeral=True)
             return
         if reason is None or len(reason) > 150:
-            await ctx.respond("사유는 150자 이내여야 합니다.", ephemeral=True)  # Error if reason exceeds 150 characters
+            await ctx.respond("사유는 150자 이내여야 합니다.", ephemeral=True)
             return
         # Fetch the user by their ID
         try:
@@ -367,7 +424,7 @@ def setup_commands(bot, SERVER_ID):
             await ctx.respond(f"{member.mention}님을 언밴했습니다.", ephemeral=True)
 
             # Send a Direct Message to the unbanned user
-            invite_link = await ctx.channel.create_invite(max_uses=1, unique=True)  # Generate an invite link
+            invite_link = await ctx.channel.create_invite(max_uses=1, unique=True)
             embed = discord.Embed(
                 title="🚪 서버로 다시 오실 수 있습니다!",
                 description="밴이 해제되었습니다. 아래 초대 링크를 사용하여 서버에 다시 참여하세요.",
@@ -382,12 +439,27 @@ def setup_commands(bot, SERVER_ID):
             except discord.Forbidden:
                 await ctx.respond(f"{member.mention}님께 DM을 보낼 수 없습니다. (DM이 비활성화 되어있습니다.)", ephemeral=True)
 
-            # Remove the ban data from MongoDB
+            # MongoDB에서 밴 정보 삭제
             try:
                 bans_coll.delete_one({"user_id": int(user_id), "server_id": ctx.guild.id})
                 print(f"Ban data for {member.name} deleted from MongoDB.")
             except Exception as e:
                 print(f"Error deleting ban data: {e}")
+
+            # 로그 임베드 추가
+            log_embed = discord.Embed(
+                title="🟢 유저 언밴",
+                color=0x62ff7f,
+                timestamp=datetime.utcnow()
+            )
+            log_embed.add_field(name="유저 ID", value=f"{member.mention} ({user_id})", inline=False)
+            log_embed.add_field(name="관리자", value=f"{ctx.author.mention} ({ctx.author.id})", inline=False)
+            if reason:
+                log_embed.add_field(name="사유", value=reason or "사유없음", inline=False)
+
+            log_channel = bot.get_channel(int(WARN_LOG_ID))
+            if log_channel:
+                await log_channel.send(embed=log_embed)
 
         except discord.NotFound:
             await ctx.respond("해당 유저는 이미 언밴된 상태입니다.", ephemeral=True)
@@ -395,3 +467,4 @@ def setup_commands(bot, SERVER_ID):
             await ctx.respond("권한이 부족하여 밴을 해제할 수 없습니다.", ephemeral=True)
         except Exception as e:
             await ctx.respond(f"밴 해제 중 오류가 발생했습니다: {str(e)}", ephemeral=True)
+
