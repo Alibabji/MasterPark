@@ -6,6 +6,7 @@ from features import auto_update
 from features.auto_update import start_member_count
 from functions.commands import setup_commands
 from utils.logger import setup_logger
+from utils.welcom import setup_welcomer
 
 # Load token and channel ID from environment variables
 load_dotenv()
@@ -32,6 +33,7 @@ setup_commands(bot, SERVER_ID)
 
 setup_logger(bot)
 
+setup_welcomer(bot)
 # Run the bot
 if __name__ == "__main__":
     bot.run(TOKEN)
