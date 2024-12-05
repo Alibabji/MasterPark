@@ -1,3 +1,5 @@
+from tkinter import Button
+
 import discord
 import pymongo.errors
 from discord import ApplicationContext, Embed, Option
@@ -17,6 +19,94 @@ banned_users = bans_coll
 client = discord.Client()
 ROLE_ID=int(os.getenv('SUBMOD_ID'))
 WARN_LOG_ID=int(os.getenv('WARN_LOG_ID'))
+TICKET_TEST_ID=int(os.getenv('TICKET_CHANNEL'))
+
+class TicketView(View):
+    def __init__(self, embed_message, max_slots):
+        super().__init__(timeout=None)  # 버튼 뷰에 시간 제한 없음
+        self.embed_message = embed_message  # 메시지 객체 저장
+        self.max_slots = max_slots  # 최대 인원수
+        self.current_slots = 0  # 현재 참여 인원
+        self.participants = []  # 참여자 리스트
+        self.waitlists = [] # 대기자 리스트
+
+    @discord.ui.button(label="Join", style=discord.ButtonStyle.success)
+    async def join_button(self, button: Button, interaction: discord.Interaction):
+
+        user_id = interaction.user.id
+        if user_id not in self.participants:
+
+                # 대기자 명단 추가
+            if self.max_slots <= self.current_slots and user_id not in self.waitlists:
+
+                self.waitlists.append(user_id)
+                embed = self.embed_message.embeds[0]
+
+                if self.max_slots == self.current_slots:
+                    embed.add_field(name="대기자 목록", value=f"<@{user_id}>")
+                else:
+                    embed.set_field_at(index=3, name="대기자 목록", value="\n".join([f"<@{uid}>" for uid in self.waitlists]), inline=False)
+                await self.embed_message.edit(embed=embed)
+                await interaction.response.send_message("인원이 모두 모집되었습니다. 대기자 명단에 작성됩니다.", ephemeral=True)
+
+
+                # 참가자 명단 추가
+            else:
+                self.participants.append(user_id)
+                self.current_slots += 1
+
+                # 임베드 업데이트
+                embed = self.embed_message.embeds[0]
+                embed.set_field_at(index=2, name="참여자 목록", value="\n".join([f"<@{uid}>" for uid in self.participants]), inline=False)
+                embed.set_footer(text=f"남은 인원수: {0 if self.max_slots-self.current_slots<0 else self.max_slots-self.current_slots}")
+
+
+                await self.embed_message.edit(embed=embed)
+                await interaction.response.send_message("참여 완료!", ephemeral=True)
+        else:
+            await interaction.response.send_message("이미 참여하셨습니다.", ephemeral=True)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
+    async def cancel_button(self, button: Button, interaction: discord.Interaction):
+        user_id = interaction.user.id
+
+        if user_id in self.waitlists:
+            self.waitlists.remove(user_id)
+            self.current_slots -= 1
+
+            embed = self.embed_message.embeds[0]
+
+            if len(self.waitlists)==1:
+                embed.remove_field(index=3)
+            else:
+                embed.set_field_at(index=3, name="대기자 목록", value="\n".join([f"<@{uid}>" for uid in self.waitlists]), inline=False)
+            await self.embed_message.edit(embed=embed)
+            await interaction.response.send_message("대기 취소 완료!", ephemeral=True)
+            print(self.waitlists)
+            print(self.current_slots)
+
+        elif user_id in self.participants:
+            self.participants.remove(user_id)
+            self.current_slots -= 1
+
+            # 임베드 업데이트
+            embed = self.embed_message.embeds[0]
+
+            if self.waitlists:
+                self.participants.append(self.waitlists.pop())
+                embed.set_field_at(index=2, name="참여자 목록", value="\n".join([f"<@{uid}>" for uid in self.participants]), inline=False)
+                embed.remove_field(3)
+            else:
+                if self.participants:
+                    embed.set_field_at(index=2, name="참여자 목록", value="\n".join([f"<@{uid}>" for uid in self.participants]), inline=False)
+                else:
+                    embed.set_field_at(index=2, name="참여자 목록", value="없음", inline=False)
+            embed.set_footer(text=f"남은 인원수: {self.max_slots - self.current_slots}")
+
+            await self.embed_message.edit(embed=embed)
+            await interaction.response.send_message("참여 취소 완료!", ephemeral=True)
+        else:
+            await interaction.response.send_message("참여하지 않았습니다.", ephemeral=True)
 
 def setup_commands(bot, SERVER_ID):
 
@@ -35,6 +125,21 @@ def setup_commands(bot, SERVER_ID):
             await ctx.respond("사유는 150자 이내여야 합니다.", ephemeral=True)  # Error if reason exceeds 150 characters
             return False
         return True
+
+    @bot.slash_command(guild_ids=[int(SERVER_ID)], name="ticket", description="인원 모집 글을 생성합니다.")
+    async def ticket(ctx, description: discord.Option(str), time: discord.Option(str), number: discord.Option(int)):
+        embed = discord.Embed(title=f"<@{ctx.author.id}>님의 인원 모집", color=discord.Color.blue())
+        embed.add_field(name="시간대", value=time, inline=False)
+        embed.add_field(name="설명", value=description, inline=False)
+        embed.add_field(name="참여자 목록", value="없음", inline=False)
+        embed.set_image(url="https://i.ibb.co/Nn75mJ3/welcome-img.webp")
+        embed.set_footer(text=f"남은 인원수: {number}")
+
+        # 메시지 전송 및 버튼 추가
+        message = await ctx.send(embed=embed)
+        view = TicketView(embed_message=message, max_slots=number)
+        await message.edit(view=view)
+        await ctx.respond("글을 성공적으로 생성하였습니다.", ephemeral=True)
 
     @bot.slash_command(guild_ids=[int(SERVER_ID)],name="alert",description="유저에게 주의를 줍니다.")
     async def alert(ctx, user: discord.Option(discord.Member, description="경고를 주고싶은 유저"), reason: discord.Option(str)):
