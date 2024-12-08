@@ -26,6 +26,5 @@ def setup_welcomer(bot):
             color=discord.Color.blurple()
         )
         embed.set_thumbnail(url=f"{icon}")
-        print(icon)
         embed.set_image(url="https://i.ibb.co/Nn75mJ3/welcome-img.webp")
         await welcome_channel.send(embed=embed)
