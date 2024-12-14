@@ -31,10 +31,8 @@ class TicketView(View):
         self.participants = []  # 참여자 리스트
         self.waitlists = [] # 대기자 리스트
 
-    @discord.ui.button(label="Join", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="참가", style=discord.ButtonStyle.success)
     async def join_button(self, button: Button, interaction: discord.Interaction):
-        print(self.current_slots)
-        print(self.max_slots)
 
         user_id = interaction.user.id
         if user_id in self.participants or user_id in self.waitlists:
@@ -44,7 +42,7 @@ class TicketView(View):
             if self.max_slots <= self.current_slots:
                 self.waitlists.append(user_id)
                 if self.max_slots == self.current_slots:
-                    embed.add_field(name="대기자 목록", value=f"<@{user_id}>", inline=True)
+                    embed.set_field_at(index=3, name="대기자 목록", value=f"<@{user_id}>", inline=True)
                 elif self.max_slots < self.current_slots:
                     embed.set_field_at(index=3, name="대기자 목록", value="\n".join([f"<@{uid}>" for uid in self.waitlists]), inline=True)
                 await interaction.response.send_message("대기 참여 완료!", ephemeral=True)
@@ -57,8 +55,9 @@ class TicketView(View):
             embed.set_footer(text=f"남은 인원수: {0 if self.max_slots - self.current_slots < 0 else self.max_slots - self.current_slots}")
             await self.embed_message.edit(embed=embed)
 
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="취소", style=discord.ButtonStyle.danger)
     async def cancel_button(self, button: Button, interaction: discord.Interaction):
+
         user_id = interaction.user.id
         if user_id in self.participants or user_id in self.waitlists:
 
@@ -68,7 +67,7 @@ class TicketView(View):
             if user_id in self.waitlists:
                 self.waitlists.remove(user_id)
                 if not self.waitlists:
-                    embed.remove_field(index=3)
+                    embed.set_field_at(index=3, name="대기자 목록", value="없음", inline=True)
                 else:
                     embed.set_field_at(index=3, name="대기자 목록", value="\n".join([f"<@{uid}>" for uid in self.waitlists]), inline=True)
 
@@ -82,7 +81,7 @@ class TicketView(View):
                     embed.set_field_at(index=2, name="참여자 목록", value="\n".join([f"<@{uid}>" for uid in self.participants]), inline=True)
 
                     if not self.waitlists:
-                        embed.remove_field(index=3)
+                        embed.set_field_at(index=3, name="대기자 목록", value="없음", inline=True)
                     else:
                         embed.set_field_at(index=3, name="대기자 목록", value="\n".join([f"<@{uid}>" for uid in self.waitlists]), inline=True)
                 else:
@@ -95,25 +94,36 @@ class TicketView(View):
             await self.embed_message.edit(embed=embed)
             await interaction.response.send_message("참여 취소 완료!", ephemeral=True)
         else:
-            await interaction.response.send_message("참여하시지 않았습니다", ephemeral=True)
+            await interaction.response.send_message("참여하지 않았습니다", ephemeral=True)
 
-    @discord.ui.button(label="Close", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="마감", style=discord.ButtonStyle.gray)
     async def close_button(self, button: Button, interaction: discord.Interaction):
-        if interaction.user.id != self.creator_id:
+        if interaction.user.id != self.creator_id or not interaction.user.guild_permissions.manage_guild:
             await interaction.response.send_message("이 버튼을 사용할 권한이 없습니다.", ephemeral=True)
             return
 
         # 모든 버튼 비활성화
         for child in self.children:
             if isinstance(child, Button):
+                child.style = discord.ButtonStyle.gray
                 child.disabled = True
 
         # 임베드 업데이트
         embed = self.embed_message.embeds[0]
-        embed.insert_field_at(index=0, name="모집이 마감되었습니다!", inline=False)
+        embed.insert_field_at(index=0, name="모집이 마감되었습니다!", value="\u200b", inline=False)
 
         await self.embed_message.edit(embed=embed, view=self)
         await interaction.response.send_message("모집이 마감되었습니다.", ephemeral=True)
+
+    @discord.ui.button(label="삭제", style=discord.ButtonStyle.primary)
+    async def delete_button(self, button: Button, interaction: discord.Interaction):
+        if interaction.user.id != self.creator_id or not interaction.user.guild_permissions.manage_guild:
+            await interaction.response.send_message("이 버튼을 사용할 권한이 없습니다.", ephemeral=True)
+            return
+
+        # 임베드 삭제
+        await self.message.delete()
+        await interaction.response.send_message("메시지가 삭제되었습니다!", ephemeral=True)
 
 
 def setup_commands(bot, SERVER_ID):
@@ -134,13 +144,37 @@ def setup_commands(bot, SERVER_ID):
             return False
         return True
 
-    @bot.slash_command(guild_ids=[int(SERVER_ID)], name="ticket", description="인원 모집 글을 생성합니다.")
-    async def ticket(ctx, description: discord.Option(str), time: discord.Option(str, description=""), number: discord.Option(int)):
+    async def check_time(ctx,hour,minute):
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            return True
+        else:
+            await ctx.respond("유효하지 않은 시간입니다!", ephemeral=True)
+            return False
 
-        embed = discord.Embed(title=f"<@{ctx.author.id}>님의 인원 모집", color=discord.Color.blue())
-        embed.add_field(name="시간대", value=time, inline=False)
+
+
+
+    @bot.slash_command(guild_ids=[int(SERVER_ID)], name="ticket", description="인원 모집 글을 생성합니다.")
+    async def ticket(ctx, description: discord.Option(str), hour: discord.Option(int, description="0~23"), minute: discord.Option(int, description="0~59"), number: discord.Option(int)):
+
+        if not await check_time(ctx, hour, minute):
+            return
+
+        current_time = datetime.now()
+        input_time = datetime.now().replace(hour=hour, minute=minute)
+
+        # 입력 시간이 지났다면 다음 날로 조정
+        if input_time < current_time:
+            input_time += timedelta(days=1)
+
+        epoch_time = int(round(input_time.timestamp()))
+
+        # embed = discord.Embed(title="", color=discord.Color.blue(), timestamp=time)
+        embed = discord.Embed(title="", color=discord.Color.green())
+        embed.add_field(name="시간", value=f"<t:{epoch_time}:t>", inline=False)
         embed.add_field(name="설명", value=description, inline=False)
-        embed.add_field(name="참여자 목록", value="없음", inline=False)
+        embed.add_field(name="참여자 목록", value="없음", inline=True)
+        embed.add_field(name="대기자 목록", value="없음", inline=True)
         embed.set_image(url="https://i.ibb.co/Nn75mJ3/welcome-img.webp")
         embed.set_footer(text=f"남은 인원수: {number}")
 
