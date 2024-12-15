@@ -4,9 +4,11 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from features import auto_update
 from features.auto_update import start_member_count
+from features.ticket import ticket_send
 from functions.commands import setup_commands
 from utils.logger import setup_logger
 from utils.welcom import setup_welcomer
+from features import ticket
 
 # Load token and channel ID from environment variables
 load_dotenv()
@@ -26,6 +28,7 @@ bot = commands.Bot(command_prefix="/", intents=intents)
 @bot.event
 async def on_ready():
     await start_member_count(bot)
+    await ticket_send(bot)
     print(f"Logged in as {bot.user}")
 
 # Setup functions
