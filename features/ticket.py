@@ -12,6 +12,7 @@ import subprocess
 load_dotenv()
 TICKET_CHANNEL = int(os.getenv("TICKET_CHANNEL"))
 ADMIN = int(os.getenv("MOD_ID"))
+ROLE_ID=int(os.getenv('SUBMOD_ID'))
 
 class TicketModal(discord.ui.Modal):
     def __init__(self):
@@ -41,9 +42,9 @@ class TicketModal(discord.ui.Modal):
                     guild.default_role: discord.PermissionOverwrite(read_messages=False),
                     interaction.user: discord.PermissionOverwrite(read_messages=True)
                 }
-                ticket_channel=await guild.create_text_channel(
+                ticket_channel = await guild.create_text_channel(
                     name="🎫-ticket",
-                    topic=f"박사범의 롤려차기 티켓채널입니다. 도움을 위해 <@&{ADMIN}>에게 연락하세요",
+                    topic=f"박사범의 롤려차기 티켓채널입니다. 도움을 위해 <@&{ADMIN}>에게 연락하세요 (creator_id:{interaction.user.id})",
                     overwrites=overwrites,
                     category=category
                 )
@@ -70,6 +71,24 @@ class TicketModal(discord.ui.Modal):
                 ])
 
                 async def ticket_close_callback(interaction: discord.Interaction):
+                    creator_id = None
+                    if interaction.channel.topic:
+                        try:
+                            creator_id = int(interaction.channel.topic.split("creator_id:")[-1].strip(")"))
+                        except (ValueError, IndexError):
+                            pass  # ID가 없거나 잘못된 경우 대비
+
+                    # 권한 확인: 티켓 생성자이거나 관리 권한이 있는 경우만 허용
+                    if not (
+                            interaction.user.id == creator_id  # 티켓 생성자인 경우
+                            or interaction.user.guild_permissions.manage_guild  # 서버 관리 권한이 있는 경우
+                    ):
+                        await interaction.response.send_message(
+                            content="❌ 티켓을 닫을 권한이 없습니다. 관리자에게 문의해주세요!",
+                            ephemeral=True
+                        )
+                        return  # 권한 부족 시 종료
+
                     close_embed = discord.Embed(
                         title="티켓 닫기",
                         description="`10`초 후에 티켓이 닫힙니다... ⏳"
@@ -117,6 +136,111 @@ class TicketModal(discord.ui.Modal):
                     # Finally, delete the ticket channel
                     await ticket_channel.delete()
 
+                async def select_callback(interaction: discord.Interaction):
+                    # Ensure the user is an admin before allowing the action
+                    if not (interaction.user.guild_permissions.manage_guild or ROLE_ID in [role.id for role in interaction.user.roles]):
+                        await interaction.response.send_message(
+                            content="유저를 추가할 권한이 없습니다!\n관리자에게 부탁해주세요",
+                            ephemeral=True  # This makes the message visible only to the user who clicked
+                        )
+                        return  # Exit the function early, preventing further actions
+                    await interaction.response.defer()  # 응답 예약 (작업 중 표시)
+
+                    if select.values[0] == "유저 추가":
+                        members = [member for member in interaction.guild.members if not member.bot]
+
+                        # 유저 목록을 25명씩 분할
+                        chunks = [members[i:i + 25] for i in range(0, len(members), 25)]
+
+                        # 선택 뷰를 생성하는 함수
+                        async def create_member_selection_view(chunk_index=0):
+                            chunk = chunks[chunk_index]
+                            options = [
+                                discord.SelectOption(
+                                    label=member.display_name,
+                                    value=str(member.id),
+                                    description=f"ID: {member.id}",
+                                )
+                                for member in chunk
+                            ]
+
+                            user_select = Select(
+                                placeholder="추가할 유저를 선택하세요",
+                                options=options,
+                                max_values=len(options)  # 현재 청크 내의 모든 멤버 선택 가능
+                            )
+
+                            async def user_select_callback(inner_interaction: discord.Interaction):
+                                selected_users = [int(user_id) for user_id in user_select.values]
+                                usernames = [
+                                    inner_interaction.guild.get_member(user_id).mention
+                                    for user_id in selected_users
+                                ]
+
+                                # 선택된 유저를 티켓 채널에 추가
+                                for user_id in selected_users:
+                                    member = inner_interaction.guild.get_member(user_id)
+                                    if member:
+                                        await ticket_channel.set_permissions(
+                                            member, read_messages=True, send_messages=True
+                                        )
+
+                                await inner_interaction.response.edit_message(
+                                    content=f"선택된 유저가 티켓에 추가되었습니다: {', '.join(usernames)}",
+                                    view=None,  # 추가 완료 후 뷰 제거
+                                )
+                                await ticket_channel.send(
+                                    f"<@{inner_interaction.user.id}>님께서 {', '.join(usernames)}님을 티켓에 추가하였습니다."
+                                )
+
+                            user_select.callback = user_select_callback
+
+                            prev_button = Button(
+                                label="이전", style=discord.ButtonStyle.secondary,
+                                disabled=(chunk_index == 0)
+                            )
+                            next_button = Button(
+                                label="다음", style=discord.ButtonStyle.secondary,
+                                disabled=(chunk_index == len(chunks) - 1)
+                            )
+
+                            async def prev_button_callback(inner_interaction: discord.Interaction):
+                                await inner_interaction.response.edit_message(
+                                    content="유저를 추가할 멤버를 선택해주세요:",
+                                    view=await create_member_selection_view(chunk_index - 1)
+                                )
+
+                            async def next_button_callback(inner_interaction: discord.Interaction):
+                                await inner_interaction.response.edit_message(
+                                    content="유저를 추가할 멤버를 선택해주세요:",
+                                    view=await create_member_selection_view(chunk_index + 1)
+                                )
+
+                            prev_button.callback = prev_button_callback
+                            next_button.callback = next_button_callback
+
+                            view = View()
+                            view.add_item(user_select)
+                            view.add_item(prev_button)
+                            view.add_item(next_button)
+
+                            return view
+
+                        # 첫 번째 청크 뷰를 생성하고 메시지를 수정
+                        view = await create_member_selection_view(0)
+                        await interaction.followup.send(
+                            content="유저를 추가할 멤버를 선택해주세요:",
+                            view=view,
+                            ephemeral=True
+                        )
+
+                    elif select.values[0] == "유저 제거":
+                        await interaction.followup.send(
+                            content="유저 제거 기능은 현재 준비 중입니다!",
+                            ephemeral=True
+                        )
+
+                select.callback = select_callback
                 ticket_close.callback = ticket_close_callback
 
 
