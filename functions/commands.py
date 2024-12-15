@@ -21,7 +21,7 @@ ROLE_ID=int(os.getenv('SUBMOD_ID'))
 WARN_LOG_ID=int(os.getenv('WARN_LOG_ID'))
 TICKET_TEST_ID=int(os.getenv('TICKET_CHANNEL'))
 
-class TicketView(View):
+class Custum_Game_View(View):
     def __init__(self, embed_message, max_slots, creator_id):
         super().__init__(timeout=86400)  # 24시간 (86400초) 동안 유지
         self.creator_id = creator_id # 작성자 id 저장
@@ -151,11 +151,8 @@ def setup_commands(bot, SERVER_ID):
             await ctx.respond("유효하지 않은 시간입니다!", ephemeral=True)
             return False
 
-
-
-
-    @bot.slash_command(guild_ids=[int(SERVER_ID)], name="ticket", description="인원 모집 글을 생성합니다.")
-    async def ticket(ctx, description: discord.Option(str), hour: discord.Option(int, description="0~23"), minute: discord.Option(int, description="0~59"), number: discord.Option(int)):
+    @bot.slash_command(guild_ids=[int(SERVER_ID)], name="custum", description="내전 인원 모집 글을 생성합니다.")
+    async def custum(ctx, description: discord.Option(str), hour: discord.Option(int, description="0~23"), minute: discord.Option(int, description="0~59"), number: discord.Option(int)):
 
         if not await check_time(ctx, hour, minute):
             return
@@ -180,7 +177,7 @@ def setup_commands(bot, SERVER_ID):
 
         # 메시지 전송 및 버튼 추가
         message = await ctx.send(embed=embed)
-        view = TicketView(embed_message=message, max_slots=number, creator_id=ctx.author.id)
+        view = Custum_Game_View(embed_message=message, max_slots=number, creator_id=ctx.author.id)
         await message.edit(view=view)
         await ctx.response.send_message("글을 성공적으로 생성하였습니다!", ephemeral=True)
 
